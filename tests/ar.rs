@@ -10,6 +10,7 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use double_entry::{Account, AccountId, AccountType, Currency, currencies};
+use invoice_kit::TieMode;
 use invoice_kit::{
     Decimal, Invoice, InvoiceError, InvoiceLine, IssueReason, NumberingError, RoundingPolicy,
     SettlementState, TaxCategory, allocation, numbering, tax,
@@ -901,4 +902,136 @@ fn a_zero_decimal_currency_is_carried_through() {
         "1500 yen is 1500 minor units, not 15.00 — an implementation that \
          assumes two decimals is wrong by 100x"
     );
+}
+
+/// Two taxable groups whose unrounded halves cancel: the document-level and
+/// per-group methods must disagree, and must disagree by design.
+///
+/// Under GST Act s9-90 a taxpayer with two or more taxable supplies may add
+/// *unrounded* GST and round the total once. EN 16931 §7.4 requires each
+/// (category, rate) group to be rounded instead. The ATO states seller and
+/// buyer need not use the same method, so this crate must be able to produce
+/// either — and must not quietly compute one while labelling it the other.
+fn two_tax_groups_whose_halves_cancel(policy: RoundingPolicy) -> Invoice {
+    Invoice::draft("2026-07-01", currencies::AUD, policy)
+        // 5c at 10% is exactly half a cent.
+        .with_line(InvoiceLine {
+            id: "1".into(),
+            description: "Ten per cent line".into(),
+            quantity: Decimal::whole(1),
+            unit_price: Decimal::new(5, 2),
+            base_quantity: Decimal::whole(1),
+            tax_category: TaxCategory::Standard,
+            tax_rate_permille: 100,
+        })
+        // 5c at 30% is exactly one and a half cents.
+        .with_line(InvoiceLine {
+            id: "2".into(),
+            description: "Thirty per cent line".into(),
+            quantity: Decimal::whole(1),
+            unit_price: Decimal::new(5, 2),
+            base_quantity: Decimal::whole(1),
+            tax_category: TaxCategory::Standard,
+            tax_rate_permille: 300,
+        })
+}
+
+#[test]
+fn the_three_regimes_are_genuinely_different_algorithms() {
+    // Each group is a half, so rounding each group rounds *up* twice.
+    let per_group = two_tax_groups_whose_halves_cancel(RoundingPolicy::En16931Group);
+    assert_eq!(
+        per_group.total_tax().units,
+        3,
+        "1c + 2c when each group rounds"
+    );
+
+    // Adding the unrounded halves first gives 2c exactly: one rounding, not two.
+    let per_document = two_tax_groups_whose_halves_cancel(RoundingPolicy::GstTotalInvoice);
+    assert_eq!(
+        per_document.total_tax().units,
+        2,
+        "GST Act s9-90's total-invoice rule rounds once, so the two halves combine"
+    );
+
+    // Rounding per supply lands on the per-group answer here, which is the
+    // point: it is a *different rule*, not a relabelling of the other one.
+    let per_supply = two_tax_groups_whose_halves_cancel(RoundingPolicy::GstTaxableSupply);
+    assert_eq!(per_supply.total_tax().units, 3);
+}
+
+#[test]
+fn the_total_invoice_breakdown_still_sums_to_the_total() {
+    // BR-S-08/S-09: the BT-151/152 breakdown must sum to the document total.
+    // Under a single rounding, no set of independently-rounded groups can do
+    // that by construction, so the residual has to be attributed somewhere.
+    let invoice = two_tax_groups_whose_halves_cancel(RoundingPolicy::GstTotalInvoice);
+    let groups = invoice.tax_groups();
+    let summed: i64 = groups.iter().map(|(_, _, amount)| amount.units).sum();
+    assert_eq!(summed, invoice.total_tax().units);
+    assert_eq!(
+        groups.len(),
+        2,
+        "the breakdown is still per (category, rate)"
+    );
+    // The residual went to the larger unrounded group, so the ten per cent line
+    // is reported at zero rather than the thirty per cent line being understated.
+    assert_eq!(groups[0].2.units, 0);
+    assert_eq!(groups[1].2.units, 2);
+}
+
+#[test]
+fn the_en16931_breakdown_also_sums_to_the_total() {
+    let invoice = two_tax_groups_whose_halves_cancel(RoundingPolicy::En16931Group);
+    let summed: i64 = invoice
+        .tax_groups()
+        .iter()
+        .map(|(_, _, amount)| amount.units)
+        .sum();
+    assert_eq!(summed, invoice.total_tax().units);
+}
+
+#[test]
+fn round_div_is_exact_on_the_boundary_and_never_loses_a_cent() {
+    // 0.5 down under half-even, up under half-up: the whole reason TieMode is
+    // explicit rather than inherited from whatever the storage engine does.
+    assert_eq!(Decimal::round_div(5, 10, TieMode::HalfEven), 0);
+    assert_eq!(Decimal::round_div(5, 10, TieMode::HalfUp), 1);
+    assert_eq!(Decimal::round_div(5, 10, TieMode::TowardZero), 0);
+    assert_eq!(Decimal::round_div(5, 10, TieMode::AwayFromZero), 1);
+
+    // Negative values round away from zero, not toward it, when asked to.
+    assert_eq!(Decimal::round_div(-5, 10, TieMode::HalfUp), -1);
+    assert_eq!(Decimal::round_div(-5, 10, TieMode::TowardZero), 0);
+    assert_eq!(Decimal::round_div(-4, 10, TieMode::HalfUp), 0);
+
+    // And the divisor-exact case never touches the tie rule.
+    assert_eq!(Decimal::round_div(1000, 1000, TieMode::HalfEven), 1);
+    assert_eq!(Decimal::round_div(0, 1000, TieMode::HalfUp), 0);
+}
+
+#[test]
+fn floor_div_rounds_toward_negative_infinity() {
+    assert_eq!(Decimal::floor_div(7, 2), 3);
+    assert_eq!(Decimal::floor_div(-7, 2), -4);
+    assert_eq!(Decimal::floor_div(6, 2), 3);
+    assert_eq!(Decimal::floor_div(-6, 2), -3);
+}
+
+#[test]
+fn a_gross_total_is_the_sum_of_its_parts_in_every_regime() {
+    // Whatever the regime does internally, BT-112 must equal BT-109 + BT-110.
+    for policy in [
+        RoundingPolicy::En16931Group,
+        RoundingPolicy::GstTotalInvoice,
+        RoundingPolicy::GstTaxableSupply,
+        RoundingPolicy::HmrcSeventeenFive,
+    ] {
+        let invoice = two_tax_groups_whose_halves_cancel(policy);
+        assert_eq!(
+            invoice.total_with_tax().units,
+            invoice.net_total().units + invoice.total_tax().units,
+            "{policy:?}"
+        );
+    }
 }

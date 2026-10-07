@@ -249,6 +249,47 @@ impl Decimal {
     /// every unit price that was not an exact multiple of its base quantity
     /// produced no line amount at all. Rounding lives in one place, named, with
     /// the caller's mode, and nowhere else.
+    /// Round `numerator / divisor` to an integer, breaking ties by `mode`.
+    ///
+    /// Exact on integers, so no decimal representation is ever in the path of a
+    /// tax figure — the failure mode that makes `0.1 + 0.2 != 0.3` reachable
+    /// from a computed invoice.
+    pub fn round_div(numerator: i128, divisor: i128, mode: TieMode) -> i128 {
+        if divisor == 0 {
+            return 0;
+        }
+        // Round the magnitude and restore the sign at the end. Doing the tie
+        // comparison on a signed quotient makes "which neighbour is even"
+        // ill-defined, because truncation toward zero means the quotient is the
+        // *upper* candidate for a negative value: -0.5 would round to -1 under
+        // half-even purely because 0 happens to be even, when the even candidate
+        // is 0 and the answer should be 0.
+        let sign = if numerator < 0 { -1 } else { 1 };
+        let magnitude = numerator.unsigned_abs() as i128;
+        let divisor = divisor.unsigned_abs() as i128;
+        let quotient = magnitude / divisor;
+        let remainder = magnitude % divisor;
+        if remainder == 0 {
+            return quotient * sign;
+        }
+        // Compare |remainder| against half the divisor, without floating point.
+        let doubled = remainder * 2;
+        let takes_upper =
+            doubled > divisor || (doubled == divisor && mode.takes_upper_on_tie(quotient % 2 == 0));
+        let rounded = if takes_upper { quotient + 1 } else { quotient };
+        rounded * sign
+    }
+
+    /// `numerator / divisor` truncated toward negative infinity.
+    pub fn floor_div(numerator: i128, divisor: i128) -> i128 {
+        let quotient = numerator / divisor;
+        if numerator % divisor != 0 && (numerator < 0) != (divisor < 0) {
+            quotient - 1
+        } else {
+            quotient
+        }
+    }
+
     pub fn quantize(self, scale: u32, mode: TieMode) -> Self {
         if scale >= self.scale {
             let factor = 10i128.saturating_pow(scale - self.scale);
@@ -277,7 +318,7 @@ impl Decimal {
         let up = match remainder.cmp(&half) {
             core::cmp::Ordering::Less => false,
             core::cmp::Ordering::Greater => true,
-            core::cmp::Ordering::Equal => mode.takes_upper_on_tie(quotient % 2 == 1),
+            core::cmp::Ordering::Equal => mode.takes_upper_on_tie(quotient % 2 == 0),
         };
         let rounded = quotient + u128::from(up);
         let magnitude = if rounded > i128::MAX as u128 {
@@ -678,49 +719,88 @@ impl Invoice {
     pub fn tax_groups(&self) -> Vec<(TaxCategory, u32, Amount)> {
         let nets = self.line_net_amounts();
         let mut order: Vec<(TaxCategory, u32)> = Vec::new();
-        let mut totals: Vec<Amount> = Vec::new();
+        let mut numerator: Vec<i128> = Vec::new();
+        let mut rounded: Vec<i128> = Vec::new();
         for (line, net) in self.lines.iter().zip(nets.iter()) {
             let key = (line.tax_category, line.tax_rate_permille);
-            match order.iter().position(|k| *k == key) {
-                Some(index) => {
-                    // `position` guarantees the index exists, but a panicking
-                    // index in a tax computation is not an acceptable way to say
-                    // that: an out-of-range index here would be a bug that only
-                    // shows up on a customer's invoice.
-                    let Some(current) = totals.get(index) else {
-                        continue;
-                    };
-                    let combined = current.units + net.units;
-                    if let Some(slot) = totals.get_mut(index) {
-                        *slot = Amount::minor(combined, self.currency);
-                    }
-                }
+            let index = match order.iter().position(|k| *k == key) {
+                Some(index) => index,
                 None => {
                     order.push(key);
-                    totals.push(*net);
+                    numerator.push(0);
+                    rounded.push(0);
+                    order.len() - 1
                 }
+            };
+            // Keep the *unrounded* numerator so a policy that rounds once, later,
+            // still has the exact value it is required to round. The rate is
+            // per-mille, so tax = base * rate / 1000.
+            let line_numerator = (net.units as i128) * (line.tax_rate_permille as i128);
+            if let Some(slot) = numerator.get_mut(index) {
+                *slot += line_numerator;
+            }
+            // GST Act s9-90's taxable-supply rule rounds *per supply*, so this
+            // accumulation is not the same number as the one above.
+            let per_line =
+                Decimal::round_div(line_numerator, 1000, self.rounding_policy.tie_mode());
+            if let Some(slot) = rounded.get_mut(index) {
+                *slot += per_line;
             }
         }
+
+        let amounts: Vec<i128> = match self.rounding_policy {
+            // Round each group once, or each supply first then per group.
+            RoundingPolicy::En16931Group | RoundingPolicy::HmrcSeventeenFive => numerator
+                .iter()
+                .map(|n| Decimal::round_div(*n, 1000, self.rounding_policy.tie_mode()))
+                .collect(),
+            RoundingPolicy::GstTaxableSupply => rounded,
+            // GST Act s9-90, total-invoice rule: add *unrounded* GST across the
+            // whole document and round once. The result is a single number, but
+            // Peppol still demands a breakdown per BT-151/BT-152 group, and
+            // BR-S-08/S-09 require those to sum to the document total — so the
+            // rounding residual has to be attributed somewhere rather than
+            // leaving the breakdown a cent away from the total.
+            RoundingPolicy::GstTotalInvoice => {
+                let grand = Decimal::round_div(
+                    numerator.iter().sum(),
+                    1000,
+                    self.rounding_policy.tie_mode(),
+                );
+                let floored: Vec<i128> = numerator
+                    .iter()
+                    .map(|n| Decimal::floor_div(*n, 1000))
+                    .collect();
+                let mut out = floored.clone();
+                let residual = grand - floored.iter().sum::<i128>();
+                if residual != 0 {
+                    // Attribute to the largest unrounded group, first-seen wins
+                    // ties: deterministic, and it puts the residual where a
+                    // reader is least likely to query it.
+                    let mut best = 0usize;
+                    for index in 1..numerator.len() {
+                        if let (Some(current), Some(best_so_far)) =
+                            (numerator.get(index), numerator.get(best))
+                        {
+                            if *current > *best_so_far {
+                                best = index;
+                            }
+                        }
+                    }
+                    if let Some(slot) = out.get_mut(best) {
+                        *slot += residual;
+                    }
+                }
+                out
+            }
+        };
+
         order
             .into_iter()
-            .zip(totals)
-            .map(|((category, rate), base)| {
-                // Integer minor-unit arithmetic: rate is per-mille, so tax =
-                // base * rate / 1000 with the tie broken by the policy.
-                let product = (base.units as i128) * (rate as i128);
-                let divisor = 1000i128;
-                let rounded = match self.rounding_policy {
-                    RoundingPolicy::En16931Group | RoundingPolicy::GstTaxableSupply => {
-                        // Half-up on the absolute value, then restore the sign.
-                        // The base is non-negative here by construction.
-                        (2 * product + divisor) / (2 * divisor)
-                    }
-                    RoundingPolicy::GstTotalInvoice | RoundingPolicy::HmrcSeventeenFive => {
-                        (product + divisor / 2) / divisor
-                    }
-                };
-                let minor = i64::try_from(rounded).unwrap_or(i64::MAX);
-                (category, rate, Amount::minor(minor.abs(), self.currency))
+            .zip(amounts)
+            .map(|((category, rate), minor)| {
+                let bounded = i64::try_from(minor.abs()).unwrap_or(i64::MAX);
+                (category, rate, Amount::minor(bounded, self.currency))
             })
             .collect()
     }
