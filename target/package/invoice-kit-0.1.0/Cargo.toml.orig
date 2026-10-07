@@ -6,7 +6,7 @@ rust-version = "1.85"
 description = "Accounts-receivable invoicing for an SME ledger — three orthogonal document states, Peppol/EN 16931 arithmetic, and per-jurisdiction rounding policy"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/WyattAu/invoice-kit"
-keywords = ["accounting", "invoicing", "ar", "vat", "peppol", "en16931"]
+keywords = ["accounting", "invoicing", "vat", "peppol", "en16931"]
 categories = ["finance", "web-programming::api"]
 exclude = ["/target"]
 

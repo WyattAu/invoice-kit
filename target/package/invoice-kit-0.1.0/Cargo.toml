@@ -26,7 +26,6 @@ readme = "README.md"
 keywords = [
     "accounting",
     "invoicing",
-    "ar",
     "vat",
     "peppol",
     "en16931",
