@@ -1,6 +1,6 @@
 [package]
 name = "invoice-kit"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Accounts-receivable invoicing for an SME ledger — three orthogonal document states, Peppol/EN 16931 arithmetic, and per-jurisdiction rounding policy"

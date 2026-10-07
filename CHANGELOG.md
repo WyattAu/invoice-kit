@@ -5,6 +5,34 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-06
+
+### Fixed
+
+- **`RoundingPolicy::GstTotalInvoice` did not implement the total-invoice
+  rule.** All three Australian modes rounded per (category, rate) group, so
+  `GstTotalInvoice` was `En16931Group` with a different name. Under GST Act
+  s9-90 the total-invoice method adds *unrounded* GST per taxable supply and
+  rounds once; the difference is real money. Worked case, now a test: two lines
+  of 5c at 10% and 5c at 30% are 3c under the per-group rule and 2c under the
+  total-invoice rule.
+- **`RoundingPolicy::GstTaxableSupply` rounded per group, not per supply.**
+  s9-90's taxable-supply method rounds each supply to the recorded precision
+  before summing.
+- **The breakdown no longer disagrees with the total under a single rounding.**
+  BR-S-08/S-09 require the BT-151/152 breakdown to sum to the document total,
+  but independently-rounded groups cannot do that by construction. The
+  residual is now attributed to the largest unrounded group, deterministically.
+- **`Decimal::round_div` lost a cent on negative ties**, and could round the
+  wrong way under half-even. The tie comparison now happens on the magnitude
+  with the sign restored at the end, because truncation toward zero makes
+  "which neighbour is even" ill-defined for a negative quotient: -0.5 rounded to
+  -1 purely because 0 happens to be even, when the even candidate is 0 and the
+  answer is 0.
+
+Six new tests. Three of them fail against the previous implementation.
+
+
 ## [0.2.0] - 2026-10-06
 
 ### Changed (breaking)
