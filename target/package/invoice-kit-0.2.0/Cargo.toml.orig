@@ -1,0 +1,24 @@
+[package]
+name = "invoice-kit"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Accounts-receivable invoicing for an SME ledger — three orthogonal document states, Peppol/EN 16931 arithmetic, and per-jurisdiction rounding policy"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/WyattAu/invoice-kit"
+keywords = ["accounting", "invoicing", "vat", "peppol", "en16931"]
+categories = ["finance", "api-bindings"]
+exclude = ["/target"]
+
+[dependencies]
+double-entry = "=0.1.0"
+# The tax vocabulary lives in vat-rules so accounts payable imports the same
+# table instead of re-deriving it.
+vat-rules = "=0.1.0"
+sha2 = "0.10"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+panic = "deny"

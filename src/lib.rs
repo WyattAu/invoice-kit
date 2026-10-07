@@ -82,9 +82,7 @@ pub use vat_rules::{
     is_all_or_none_reverse_charge,
 };
 
-use double_entry::{
-    AccountId, Amount, Currency, JournalEntry, Ledger, Line, PostError, RoundingMode,
-};
+use double_entry::{AccountId, Amount, Currency, JournalEntry, Ledger, Line, PostError};
 
 /// Whether a document is a draft or an issued tax document.
 ///
