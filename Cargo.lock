@@ -64,10 +64,11 @@ dependencies = [
 
 [[package]]
 name = "invoice-kit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "double-entry",
  "sha2",
+ "vat-rules",
 ]
 
 [[package]]
@@ -92,6 +93,12 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "vat-rules"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efd4d32ebaee67eb42b80d4c4193c9d3371e6a79b112c270bcf09b9315ab4fb8"
 
 [[package]]
 name = "version_check"

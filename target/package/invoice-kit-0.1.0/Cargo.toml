@@ -32,7 +32,7 @@ keywords = [
 ]
 categories = [
     "finance",
-    "web-programming::api",
+    "api-bindings",
 ]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/WyattAu/invoice-kit"

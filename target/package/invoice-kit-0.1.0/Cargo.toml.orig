@@ -7,7 +7,7 @@ description = "Accounts-receivable invoicing for an SME ledger — three orthogo
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/WyattAu/invoice-kit"
 keywords = ["accounting", "invoicing", "vat", "peppol", "en16931"]
-categories = ["finance", "web-programming::api"]
+categories = ["finance", "api-bindings"]
 exclude = ["/target"]
 
 [dependencies]

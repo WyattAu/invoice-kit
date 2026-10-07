@@ -5,6 +5,27 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-06
+
+### Changed (breaking)
+
+- **The tax and document vocabulary moved to `vat-rules 0.1.0`** and is
+  re-exported here, so `invoice_kit::TaxCategory` and
+  `invoice_kit::DocumentType` keep working but a consumer that also depends on
+  accounts payable sees *one* `TaxCategory` rather than two structurally
+  identical ones that cannot be compared.
+- `Decimal::quantize` takes `vat_rules::TieMode` instead of
+  `double_entry::RoundingMode`. The tie direction is policy vocabulary, not
+  arithmetic machinery, and a crate holding a table of tax codes has no business
+  depending on a double-entry engine to express "round ties away from zero".
+
+### Changed
+
+- Totals are now summed as plain integers in minor units rather than through
+  `Amount::checked_add`. Summing whole minor units has no tie to resolve, so the
+  rounding mode is irrelevant there, and routing it through the ledger's adder
+  meant mapping one rounding vocabulary onto another for no reason.
+
 ## [0.1.0] - 2026-10-06
 
 Initial release: accounts-receivable invoicing written against EN 16931, Peppol

@@ -73,8 +73,14 @@ pub mod numbering;
 pub mod tax;
 
 pub use allocation::{Allocation, AllocationError};
+// Re-exported rather than re-declared: the vocabulary is shared with accounts
+// payable, so a consumer that depends on both crates sees one `TaxCategory`.
 pub use numbering::{NumberingError, Series};
-pub use tax::{TaxCategory, TaxError};
+pub use tax::TaxError;
+pub use vat_rules::{
+    DocumentReference, DocumentType, IssueReason, RoundingPolicy, TaxCategory, TieMode,
+    is_all_or_none_reverse_charge,
+};
 
 use double_entry::{
     AccountId, Amount, Currency, JournalEntry, Ledger, Line, PostError, RoundingMode,
@@ -91,133 +97,6 @@ pub enum TaxDocumentState {
     Draft,
     /// Issued. Immutable, numbered, and retained.
     Issued,
-}
-
-/// The UNTDID 1001 document type code.
-///
-/// Direction is carried **here**, not by a sign — see the module docs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DocumentType {
-    /// 380 — an ordinary invoice. Debits the customer.
-    Invoice,
-    /// 381 — a credit note. Credits the customer.
-    CreditNote,
-    /// 383 — a debit note. Debits the customer.
-    DebitNote,
-    /// 384 — a corrected invoice. **Jurisdiction-locked**: Peppol only permits
-    /// this code when both parties are German organisations, and the Netherlands
-    /// prefers it where Peppol defaults to 381.
-    Corrected,
-    /// 386 — a prepayment invoice. EU Directive 2006/112/EC Article 220(4)
-    /// requires an invoice for *any* payment on account before the supply.
-    Prepayment,
-    /// 389 — a self-billed invoice, where the customer issues on the supplier's
-    /// behalf.
-    SelfBilled,
-}
-
-impl DocumentType {
-    /// The UNTDID 1001 code, which is what appears on the wire.
-    pub fn code(self) -> &'static str {
-        match self {
-            Self::Invoice => "380",
-            Self::CreditNote => "381",
-            Self::DebitNote => "383",
-            Self::Corrected => "384",
-            Self::Prepayment => "386",
-            Self::SelfBilled => "389",
-        }
-    }
-
-    /// Whether this document type **increases** what the customer owes.
-    ///
-    /// This is the whole sign convention: a credit note and a corrected invoice
-    /// reduce the balance, everything else increases it.
-    pub fn increases_receivable(self) -> bool {
-        matches!(self, Self::Invoice | Self::DebitNote | Self::Prepayment)
-    }
-
-    /// Whether this document type may exist without referencing another.
-    ///
-    /// A corrective document may not. EU Directive 2006/112/EC Article 219:
-    /// *"Any document or message that amends and refers specifically and
-    /// unambiguously to the initial invoice shall be treated as an invoice."*
-    /// Both conditions are conjunctive, so a document that amends without
-    /// referring unambiguously is **not** treated as an invoice — it cannot
-    /// correct the original and the original's input tax stands.
-    pub fn requires_reference(self) -> bool {
-        matches!(self, Self::CreditNote | Self::DebitNote | Self::Corrected)
-    }
-}
-
-/// Why an invoice was issued.
-///
-/// ZATCA BR-KSA-17 makes this **mandatory** on a credit or debit note, with five
-/// permitted reasons drawn from Article 54 of its VAT Implementing Regulation.
-/// EN 16931 has no such field at all, which is precisely why the field has to
-/// live here: the strictest common jurisdiction requires it and the standard
-/// does not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IssueReason {
-    /// Cancellation or suspension of the supply.
-    CancelledOrSuspended,
-    /// A material change in the nature of the supply changing the VAT due.
-    NatureOfSupplyChanged,
-    /// Amendment of a pre-agreed value.
-    PreAgreedValueAmended,
-    /// Return of goods or services.
-    GoodsOrServicesReturned,
-    /// A change to the seller's or buyer's details.
-    PartyDetailsChanged,
-}
-
-impl IssueReason {
-    /// The stable wire code.
-    pub fn code(self) -> &'static str {
-        match self {
-            Self::CancelledOrSuspended => "01",
-            Self::NatureOfSupplyChanged => "02",
-            Self::PreAgreedValueAmended => "03",
-            Self::GoodsOrServicesReturned => "04",
-            Self::PartyDetailsChanged => "05",
-        }
-    }
-}
-
-/// Which jurisdiction's arithmetic this document was computed under.
-///
-/// Persisted on the document because the answer must not change retroactively:
-/// an invoice recomputed under a different policy than it was issued under is a
-/// different document, and the difference is cents on real statements.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RoundingPolicy {
-    /// EN 16931 / Peppol §9: round each line net to two decimals, sum rounded
-    /// values, compute VAT per group, never re-round.
-    En16931Group,
-    /// Australian GST Act s9-90, total-invoice rule: add unrounded GST per
-    /// taxable supply, round the total once.
-    GstTotalInvoice,
-    /// Australian GST Act s9-90, taxable-supply rule: round GST per supply to
-    /// the recorded precision, then sum and round.
-    GstTaxableSupply,
-    /// UK VAT Notice 700 §17.5: below half a penny down, at or above up.
-    HmrcSeventeenFive,
-}
-
-impl RoundingPolicy {
-    /// The tie-breaking direction this policy mandates.
-    ///
-    /// Required explicitly because EN 16931 says nothing, and the two obvious
-    /// platform defaults disagree: PostgreSQL `numeric` rounds ties away from
-    /// zero, `double precision` rounds ties to even, and neither is HMRC's "up".
-    pub fn tie_mode(self) -> RoundingMode {
-        match self {
-            Self::En16931Group | Self::GstTotalInvoice | Self::GstTaxableSupply => {
-                RoundingMode::HalfUp
-            }
-            Self::HmrcSeventeenFive => RoundingMode::AwayFromZero,
-        }
-    }
 }
 
 /// How far along settlement is. Not normative anywhere — a design decision, and
@@ -250,19 +129,6 @@ impl SettlementState {
             Self::Unpaid | Self::PartiallyPaid | Self::Overdue | Self::Disputed
         )
     }
-}
-
-/// A reference to another document, by number and issue date.
-///
-/// "Specifically and unambiguously" is the Article 219 phrase, so the number
-/// **and** the date are both required: a bare number is ambiguous across numbering
-/// series, which is why UK VAT law explicitly permits parallel series.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DocumentReference {
-    /// The referenced document's number, including its series.
-    pub number: String,
-    /// The referenced document's issue date, `YYYY-MM-DD`.
-    pub issue_date: String,
 }
 
 /// One line on an invoice.
@@ -385,7 +251,7 @@ impl Decimal {
     /// every unit price that was not an exact multiple of its base quantity
     /// produced no line amount at all. Rounding lives in one place, named, with
     /// the caller's mode, and nowhere else.
-    pub fn quantize(self, scale: u32, mode: RoundingMode) -> Self {
+    pub fn quantize(self, scale: u32, mode: TieMode) -> Self {
         if scale >= self.scale {
             let factor = 10i128.saturating_pow(scale - self.scale);
             return Self {
@@ -413,11 +279,7 @@ impl Decimal {
         let up = match remainder.cmp(&half) {
             core::cmp::Ordering::Less => false,
             core::cmp::Ordering::Greater => true,
-            core::cmp::Ordering::Equal => match mode {
-                RoundingMode::HalfEven => quotient % 2 == 1,
-                RoundingMode::HalfUp | RoundingMode::AwayFromZero => true,
-                RoundingMode::TowardZero => false,
-            },
+            core::cmp::Ordering::Equal => mode.takes_upper_on_tie(quotient % 2 == 1),
         };
         let rounded = quotient + u128::from(up);
         let magnitude = if rounded > i128::MAX as u128 {
@@ -799,14 +661,12 @@ impl Invoice {
     /// Sum of the line net amounts (BT-106).
     pub fn net_total(&self) -> Amount {
         let amounts = self.line_net_amounts();
-        amounts
-            .iter()
-            .copied()
-            .reduce(|acc, next| {
-                acc.checked_add(next, self.rounding_policy.tie_mode())
-                    .unwrap_or(acc)
-            })
-            .unwrap_or_else(|| Amount::minor(0, self.currency))
+        // Plain integer addition in minor units. Summing whole minor units has
+        // no tie to resolve, so the rounding mode is irrelevant here — and
+        // reaching for the ledger's `checked_add` would have meant mapping
+        // `TieMode` onto a second vocabulary for no reason.
+        let total: i64 = amounts.iter().map(|a| a.units).sum();
+        Amount::minor(total, self.currency)
     }
 
     /// Tax, computed per `(category, rate)` group and **never per line**.
@@ -869,14 +729,12 @@ impl Invoice {
 
     /// Total tax (BT-110), the sum of the group totals.
     pub fn total_tax(&self) -> Amount {
-        self.tax_groups()
-            .into_iter()
-            .map(|(_, _, amount)| amount)
-            .reduce(|acc, next| {
-                acc.checked_add(next, self.rounding_policy.tie_mode())
-                    .unwrap_or(acc)
-            })
-            .unwrap_or_else(|| Amount::minor(0, self.currency))
+        let total: i64 = self
+            .tax_groups()
+            .iter()
+            .map(|(_, _, amount)| amount.units)
+            .sum();
+        Amount::minor(total, self.currency)
     }
 
     /// Grand total (BT-112). **Cannot be negative**: a credit note carries its
@@ -884,10 +742,7 @@ impl Invoice {
     pub fn total_with_tax(&self) -> Amount {
         let net = self.net_total();
         let tax = self.total_tax();
-        let sum = net
-            .checked_add(tax, self.rounding_policy.tie_mode())
-            .unwrap_or(net);
-        Amount::minor(sum.units.abs(), self.currency)
+        Amount::minor(net.units + tax.units, self.currency)
     }
 
     /// Assign a number and make the document issued.
