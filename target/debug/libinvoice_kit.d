@@ -1,0 +1,1 @@
+/home/wyatt/dev/src/github.com/WyattAu/invoice-kit/target/debug/libinvoice_kit.rlib: /home/wyatt/dev/src/github.com/WyattAu/invoice-kit/src/allocation.rs /home/wyatt/dev/src/github.com/WyattAu/invoice-kit/src/lib.rs /home/wyatt/dev/src/github.com/WyattAu/invoice-kit/src/numbering.rs /home/wyatt/dev/src/github.com/WyattAu/invoice-kit/src/tax.rs
