@@ -44,6 +44,15 @@ name. See the crate docs for the reasoning; the short version:
 - Payment allocation is integer minor units throughout, with the rounding
   residue reported rather than parked in an unaccounted balance.
 
+## Stability
+
+`invoice-kit` is 1.0. Breaking changes require a minor bump and a `#[deprecated]`
+window of at least one minor release; MSRV bumps are minor releases, never patch
+releases. `missing_docs` is denied and `unsafe` is forbidden. `double-entry` and
+`vat-rules` are exactly pinned so invoice arithmetic is reproducible. New
+jurisdictions may arrive in minors; existing rounding policies will not change
+behaviour.
+
 ## Licence
 
 MIT OR Apache-2.0.

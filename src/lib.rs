@@ -1,4 +1,6 @@
 //! Accounts-receivable invoicing for an SME ledger.
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
 //!
 //! # The three things this crate refuses to collapse
 //!
@@ -290,6 +292,12 @@ impl Decimal {
         }
     }
 
+    /// Re-express this amount at `scale` decimal places.
+    ///
+    /// Scaling up (a finer scale) is exact. Scaling down rounds using `mode`
+    /// as the tie-breaker. Overflow returns a zero amount when the scale
+    /// factor itself overflows, and saturates at `i128::MAX` otherwise.
+    /// Never loses the sign.
     pub fn quantize(self, scale: u32, mode: TieMode) -> Self {
         if scale >= self.scale {
             let factor = 10i128.saturating_pow(scale - self.scale);
