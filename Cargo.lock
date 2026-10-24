@@ -48,9 +48,9 @@ dependencies = [
 
 [[package]]
 name = "double-entry"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "355ca88958b55a3230acd963d42ab389528e529e084e2077c661b10858041019"
+checksum = "56a8b69418f349404539d7ad2c577912a9d3ef713a5cf834e26fecfdfbcc9732"
 
 [[package]]
 name = "generic-array"
@@ -64,7 +64,7 @@ dependencies = [
 
 [[package]]
 name = "invoice-kit"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "double-entry",
  "sha2",

@@ -1,6 +1,6 @@
 [package]
 name = "invoice-kit"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 rust-version = "1.85"
 description = "Accounts-receivable invoicing for an SME ledger: three orthogonal document states, Peppol/EN 16931 arithmetic, per-jurisdiction rounding policy"
@@ -11,7 +11,7 @@ categories = ["finance", "api-bindings"]
 exclude = ["/target"]
 
 [dependencies]
-double-entry = "=0.1.0"
+double-entry = "=0.1.1"
 # The tax vocabulary lives in vat-rules so accounts payable imports the same
 # table instead of re-deriving it.
 vat-rules = "=0.1.0"

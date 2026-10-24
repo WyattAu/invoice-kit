@@ -5,6 +5,13 @@ Changelog](https://keepachangelog.com/): versions follow [semver](https://semver
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-24
+
+### Changed
+
+- Tracks `double-entry 0.1.1` (docs-only upstream release, identical API). The estate's consumer graph holds 0.1.1 through several estate crates, so this pin move converges the graph rather than splitting it across two non-interoperable versions of the same crate.
+
+
 ## [1.0.0] - 2026-10-23
 
 ### Declared stable
