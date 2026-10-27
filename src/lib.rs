@@ -71,10 +71,12 @@
 //! platform default.
 
 pub mod allocation;
+pub mod inclusive;
 pub mod numbering;
 pub mod tax;
 
 pub use allocation::{Allocation, AllocationError};
+pub use inclusive::{GrossSplit, GrossSplitError, split_vat_inclusive};
 // Re-exported rather than re-declared: the vocabulary is shared with accounts
 // payable, so a consumer that depends on both crates sees one `TaxCategory`.
 pub use numbering::{NumberingError, Series};

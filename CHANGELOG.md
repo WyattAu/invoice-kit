@@ -5,6 +5,19 @@ Changelog](https://keepachangelog.com/): versions follow [semver](https://semver
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-27
+
+### Added
+
+- `split_vat_inclusive` — a VAT-inclusive price (UK retail quoting) split
+  into net and tax. The tax runs the arithmetic backwards: gross x rate /
+  (1000 + rate), rounded once through the exact integer path, and the net is
+  computed as gross - vat so the pieces always sum to the gross exactly.
+  Credit-note magnitudes split symmetrically; a rate of 100% or above is
+  refused as degenerate, matching ap-kit's implausible-rate gate. Studied
+  from Odoo's price_include tax handling.
+
+
 ## [1.0.2] - 2026-10-24
 
 ### Changed
