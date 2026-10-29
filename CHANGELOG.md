@@ -3,7 +3,14 @@
 All notable changes to this project are documented here. Format: [Keep a
 Changelog](https://keepachangelog.com/): versions follow [semver](https://semver.org).
 
-## [Unreleased]
+## [1.1.1] - 2026-10-27
+
+### Added
+
+- `br_co` module: EN 16931 business-rule coverage documented as constants.
+  Not runtime checks — the rules are guaranteed by construction. The
+  constants exist so the coverage is explicit and auditable.
+
 
 ## [1.1.0] - 2026-10-27
 
