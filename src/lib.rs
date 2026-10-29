@@ -406,6 +406,9 @@ impl std::fmt::Display for Decimal {
 pub enum InvoiceError {
     /// No lines. Peppol BR-16 requires at least one.
     NoLines,
+    /// Reverse-charge supply without the buyer's VAT identifier.
+    /// Peppol BR-AE-02.
+    ReverseChargeWithoutBuyerVatId,
     /// Two lines share an identifier. The line identifier is 1..1 and must be
     /// unique per document.
     DuplicateLineId(String),
@@ -453,6 +456,10 @@ impl std::fmt::Display for InvoiceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoLines => write!(f, "an invoice needs at least one line (BR-16)"),
+            Self::ReverseChargeWithoutBuyerVatId => write!(
+                f,
+                "reverse-charge supply requires the buyer's VAT identifier (BR-AE-02)"
+            ),
             Self::DuplicateLineId(id) => {
                 write!(
                     f,
@@ -529,6 +536,8 @@ pub struct Invoice {
     pub issue_reason: Option<IssueReason>,
     /// Free text for the customer.
     pub payment_terms: Option<String>,
+    /// The buyer's VAT identifier, required for reverse charge (BR-AE-02).
+    pub buyer_vat_id: Option<String>,
 }
 
 impl Invoice {
@@ -551,6 +560,7 @@ impl Invoice {
             references: Vec::new(),
             issue_reason: None,
             payment_terms: None,
+            buyer_vat_id: None,
         }
     }
 
@@ -640,7 +650,8 @@ impl Invoice {
         // rate is refused, and so is an exempt one with a non-zero rate.
         for line in &self.lines {
             let ok = match line.tax_category {
-                TaxCategory::Standard | TaxCategory::ReverseCharge => line.tax_rate_permille > 0,
+                TaxCategory::Standard => line.tax_rate_permille > 0,
+                TaxCategory::ReverseCharge => line.tax_rate_permille == 0,
                 TaxCategory::ZeroRated
                 | TaxCategory::Exempt
                 | TaxCategory::NotSubject
@@ -654,6 +665,15 @@ impl Invoice {
                     line: line.id.clone(),
                 });
             }
+        }
+        // BR-AE-02: Reverse-charge supply requires the buyer's VAT
+        // identifier on the invoice.
+        let has_reverse_charge = self
+            .lines
+            .iter()
+            .any(|l| l.tax_category == TaxCategory::ReverseCharge);
+        if has_reverse_charge && self.buyer_vat_id.is_none() {
+            return Err(InvoiceError::ReverseChargeWithoutBuyerVatId);
         }
         if self.document_type.requires_reference() {
             if self.references.is_empty() {

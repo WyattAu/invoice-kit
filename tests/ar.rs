@@ -1035,3 +1035,28 @@ fn a_gross_total_is_the_sum_of_its_parts_in_every_regime() {
         );
     }
 }
+
+#[test]
+fn reverse_charge_without_buyer_vat_id_is_refused() {
+    // BR-AE-02: a reverse-charge line requires the buyer's VAT identifier
+    // on the invoice. Without it, the buyer cannot self-account.
+    let invoice = Invoice::draft("2026-07-01", currencies::GBP, RoundingPolicy::En16931Group)
+        .with_line(InvoiceLine {
+            id: "1".into(),
+            description: "EU services".into(),
+            quantity: Decimal::whole(1),
+            unit_price: Decimal::new(50_000, 2),
+            base_quantity: Decimal::whole(1),
+            tax_category: TaxCategory::ReverseCharge,
+            tax_rate_permille: 0,
+        });
+    assert_eq!(
+        invoice.validate(),
+        Err(invoice_kit::InvoiceError::ReverseChargeWithoutBuyerVatId)
+    );
+
+    // With the buyer's VAT ID, it passes.
+    let mut invoice = invoice;
+    invoice.buyer_vat_id = Some("IE1234567AB".into());
+    assert_eq!(invoice.validate(), Ok(()));
+}
