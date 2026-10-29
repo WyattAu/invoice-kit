@@ -17,6 +17,9 @@ double-entry = "=0.1.1"
 vat-rules = "=0.1.1"
 sha2 = "0.10"
 
+[dev-dependencies]
+proptest = "1"
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
