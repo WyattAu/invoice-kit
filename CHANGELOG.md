@@ -8,7 +8,7 @@ Changelog](https://keepachangelog.com/): versions follow [semver](https://semver
 ### Added
 
 - `br_co` module: EN 16931 business-rule coverage documented as constants.
-  Not runtime checks — the rules are guaranteed by construction. The
+  Not runtime checks; the rules are guaranteed by construction. The
   constants exist so the coverage is explicit and auditable.
 
 
@@ -16,7 +16,7 @@ Changelog](https://keepachangelog.com/): versions follow [semver](https://semver
 
 ### Added
 
-- `split_vat_inclusive` — a VAT-inclusive price (UK retail quoting) split
+- `split_vat_inclusive`; a VAT-inclusive price (UK retail quoting) split
   into net and tax. The tax runs the arithmetic backwards: gross x rate /
   (1000 + rate), rounded once through the exact integer path, and the net is
   computed as gross - vat so the pieces always sum to the gross exactly.
@@ -116,8 +116,8 @@ the Australian GST Act.
   axes and the reference implementations disagree about all three.
 - `DocumentType` carrying direction. Every amount is non-negative; a credit note
   has the same shape as an invoice and the opposite meaning.
-- `RoundingPolicy` — `En16931Group`, `GstTotalInvoice`, `GstTaxableSupply`,
-  `HmrcSeventeenFive` — required, stored on the document, never inferred from a
+- `RoundingPolicy`; `En16931Group`, `GstTotalInvoice`, `GstTaxableSupply`,
+  `HmrcSeventeenFive`; required, stored on the document, never inferred from a
   platform default.
 - `tax`: UNCL5305 categories with their separate CEF `VATEX-*` reason codes, and
   the BR-AE-1 all-or-none reverse-charge rule.
@@ -129,7 +129,7 @@ the Australian GST Act.
   explained by a retained cancelled document.
 - `Decimal`: exact integer-at-scale parsing, with no float anywhere. Chosen
   because three separate production incidents in a widely deployed accounting
-  system were caused by float arithmetic on allocation — a one-cent residue, a
+  system were caused by float arithmetic on allocation; a one-cent residue, a
   comparison against a rounded display value, and a payment refused outright.
 
 ### Bugs this crate's own tests caught before publication
@@ -140,7 +140,7 @@ the Australian GST Act.
 - The line arithmetic applied the quantity **twice**, doubling every line.
 - `line_net_amounts` used `rescale_exact`, which cannot express a rounding, so
   every unit price that was not an exact multiple of its base quantity produced
-  **no line amount at all** — and Peppol §10.2 requires that quotient to be
+  **no line amount at all**; and Peppol §10.2 requires that quotient to be
   rounded. Replaced with a named `Decimal::quantize` carrying the policy's mode.
 - The journal entry **debited tax payable**, which is a liability and therefore
   increases on the credit side. The entry was unbalanced by the tax amount and

@@ -18,8 +18,8 @@ name. See the crate docs for the reasoning; the short version:
   direction, with a separate `CdtDbtInd` indicator rather than a sign.
 - **Four jurisdictions mandate mutually incompatible arithmetic.** EN 16931
   rounds at the leaf and sums; Australia's GST Act s9-90 *legally permits*
-  rounding the total once instead — a five-cent difference on twenty lines at
-  $3.49, lawful there and invalid under EN 16931 — and HMRC's rules "have no
+  rounding the total once instead; a five-cent difference on twenty lines at
+  $3.49, lawful there and invalid under EN 16931; and HMRC's rules "have no
   statutory basis". EN 16931 is silent on tie-breaking, and PostgreSQL's
   `numeric` (ties away from zero) and `double precision` (ties to even) disagree
   with each other. So `RoundingPolicy` is a required argument, and it is stored
@@ -34,7 +34,7 @@ name. See the crate docs for the reasoning; the short version:
   validator. ZATCA's BR-KSA-17 requires one of five reasons that EN 16931 has no
   field for.
 - Line net amount is `round(price / base_quantity, scale) * quantity`, with the
-  quotient rounded first — Peppol §10.2, and a different number from the other
+  quotient rounded first; Peppol §10.2, and a different number from the other
   order whenever the base quantity is not 1.
 - Tax is computed per `(category, rate)` group, never per line.
 - Numbering is **gapless**, because two jurisdictions require it and a third
