@@ -1,1 +1,4 @@
 target/
+
+# Local CI vendoring artifact (scripts copied by the standards gate)
+.standards/
